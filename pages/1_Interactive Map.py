@@ -17,6 +17,11 @@ BASEMAPS = {
         "attr": "© OpenStreetMap contributors, © CARTO",
         "max_zoom": 20,
     },
+    "Esri WorldTopoMap": {
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles © Esri — Source: Esri, HERE, Garmin, FAO, NOAA, and others",
+        "max_zoom": 20,
+    },
     "Esri Hillshade": {
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles © Esri",
@@ -26,12 +31,7 @@ BASEMAPS = {
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
         "max_zoom": 20,
-    },
-    "USGS USImageryTopo": {
-        "tiles": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}",
-        "attr": "USGS Imagery Topo",
-        "max_zoom": 16,
-    },
+    }
 }
 
 # Centered on continental US
@@ -45,7 +45,7 @@ for name, cfg in BASEMAPS.items():
         attr=cfg["attr"],
         max_zoom=cfg["max_zoom"],
         overlay=False,
-        show=(name == "OpenStreetMap"),
+        show=(name == "Esri WorldTopoMap"),
     ).add_to(m)
 
 # Added basemap switcher
