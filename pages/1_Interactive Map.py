@@ -1,3 +1,4 @@
+#Import necessary libraries
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
@@ -5,10 +6,9 @@ import urllib.parse
 from folium.features import GeoJson
 from branca.element import Element
 import datetime as dt
-import boto3, io, zipfile, tempfile, os
 
 from utilis.ui import inject_globalfont
-inject_globalfont(font_size_px=18, sidebar_font_size_px=20)    
+inject_globalfont(font_size_px=18, sidebar_font_size_px=20)
 
 from utilis.s3_catalog import build_catalog
 from utilis.s3_datadownloads import find_json_in_folder, s3_http_url
@@ -16,6 +16,7 @@ from utilis.s3_datadownloads import find_json_in_folder, s3_http_url
 st.set_page_config(page_title="Interactive FIM Vizualizer", page_icon="🌊", layout="wide")
 st.title("Benchmark FIMs")
 
+# Session defaults
 if "saved_center" not in st.session_state:
     st.session_state["saved_center"] = [39.8283, -98.5795]
 if "saved_zoom" not in st.session_state:
@@ -46,12 +47,38 @@ BASEMAPS = {
     ),
 }
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_find_json(bucket: str, folder: str, tif_filename: str | None):
+    """Cache the JSON key discovery per (bucket, folder, tif)."""
+    return find_json_in_folder(bucket, folder, tif_filename)
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def resolve_urls(bucket: str, s3_key: str | None, file_name: str | None):
+    """Given record's s3_key and file_name, return (tif_url, json_url)."""
+    tif_url = None
+    json_url = None
+    if s3_key:
+        folder = s3_key.rsplit("/", 1)[0]
+        if file_name:
+            tif_key = f"{folder}/{file_name}"
+            tif_url = s3_http_url(bucket, tif_key)
+        json_key = cached_find_json(bucket, folder, file_name)
+        if json_key:
+            json_url = s3_http_url(bucket, json_key)
+    return tif_url, json_url
+
+# Sidebar: cache control and basemap
 with st.sidebar:
     st.header("Data")
     if st.button("Reload from AWS S3 Database"):
-        build_catalog.clear()
+        build_catalog.clear()   
+        cached_find_json.clear()   
+        resolve_urls.clear()      
         st.success("Cache cleared. Data will reload now.")
 
+# Cached loads and helpers
+
+# build_catalog itself is already cached inside utilis/s3_catalog.py
 with st.spinner("Loading catalog from S3 (cached)…"):
     records = build_catalog(BUCKET, ROOT_PREFIX)
 
@@ -59,6 +86,7 @@ if not records:
     st.warning("No FIM metadata found in S3. Check bucket/prefix or permissions.")
     st.stop()
 
+# Filters
 all_tiers = sorted({r["tier"] for r in records})
 dates_all = sorted([r["date_ymd"] for r in records if r["date_ymd"]])
 min_date = dt.date.fromisoformat(dates_all[0]) if dates_all else dt.date(2000, 1, 1)
@@ -68,7 +96,8 @@ with st.sidebar:
     st.header("Filters")
     with st.form("filters_form", clear_on_submit=False):
         sel_tiers = st.multiselect("Select the Different Tiers", options=all_tiers, default=all_tiers)
-        dr = st.date_input("Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date, format="YYYY-MM-DD")
+        dr = st.date_input("Date range", value=(min_date, max_date),
+                           min_value=min_date, max_value=max_date, format="YYYY-MM-DD")
         show_polys = st.checkbox("Show Flood Inundation Mapping Extent", value=st.session_state.get("fim_show", False))
         apply_filters = st.form_submit_button("Apply Filters")
     st.header("Basemap")
@@ -89,48 +118,7 @@ else:
 
 filtered = [r for r in records if (r["tier"] in sel_tiers) and in_range(r, start_date, end_date)]
 
-def zip_s3_prefix(bucket: str, prefix: str) -> bytes:
-    s3 = boto3.client("s3")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        cont = None
-        while True:
-            kwargs = {"Bucket": bucket, "Prefix": prefix}
-            if cont:
-                kwargs["ContinuationToken"] = cont
-            resp = s3.list_objects_v2(**kwargs)
-            for obj in resp.get("Contents", []):
-                key = obj["Key"]
-                if key.endswith("/"):
-                    continue
-                data = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
-                arcname = key[len(prefix):].lstrip("/")
-                zf.writestr(arcname, data)
-            if resp.get("IsTruncated"):
-                cont = resp.get("NextContinuationToken")
-            else:
-                break
-    buf.seek(0)
-    return buf.read()
-
-qp = st.query_params
-dl_prefix = qp.get("dl_prefix", [None])
-dl_prefix = dl_prefix[0] if isinstance(dl_prefix, list) else dl_prefix
-
-if dl_prefix:
-    try:
-        zip_bytes = zip_s3_prefix(BUCKET, dl_prefix.rstrip("/") + "/")
-        zip_name = dl_prefix.rstrip("/").split("/")[-1] or "folder"
-        st.download_button(
-            label=f"⬇ Download ZIP for {zip_name}",
-            data=zip_bytes,
-            file_name=f"{zip_name}.zip",
-            mime="application/zip",
-            use_container_width=True
-        )
-    except Exception as e:
-        st.error(f"Download failed: {e}")
-
+# Map
 m = folium.Map(
     location=st.session_state["saved_center"],
     zoom_start=st.session_state["saved_zoom"],
@@ -143,28 +131,11 @@ bm = BASEMAPS[basemap_choice]
 folium.TileLayer(tiles=bm["tiles"], name=basemap_choice, control=False, attr=bm["attr"], show=True).add_to(m)
 
 def popup_html(r: dict) -> str:
-    tif_url = None
-    json_url = None
-
-    file_name = r.get("file_name")        
-    s3_key = r.get("s3_key")              
-    folder = None
-
-    if s3_key:
-        folder = s3_key.rsplit("/", 1)[0]
-
-        # Direct .tif URL
-        if file_name:
-            tif_path = f"{folder}/{file_name}"
-            tif_url = s3_http_url(BUCKET, tif_path)
-
-        # Direct .json URL
-        json_key = find_json_in_folder(BUCKET, folder, file_name)
-        if json_key:
-            json_url = s3_http_url(BUCKET, json_key)
+    # Resolve URLs via cached helper
+    tif_url, json_url = resolve_urls(BUCKET, r.get("s3_key"), r.get("file_name"))
 
     fields = [
-        ("File Name", file_name),
+        ("File Name", r.get("file_name")),
         ("Resolution (m)", r.get("resolution_m")),
         ("State", r.get("state")),
         ("Description", r.get("description")),
@@ -173,13 +144,19 @@ def popup_html(r: dict) -> str:
         ("Date", r.get("date_ymd") or r.get("date_raw")),
         ("Quality", r.get("quality")),
     ]
-    refs = r.get("references") or []
-    refs_html = "<ul>" + "".join(f"<li>{ref}</li>" for ref in refs) + "</ul>" if refs else ""
     rows = "".join(
         f"<tr><th style='text-align:left;vertical-align:top;padding-right:8px'>{k}</th>"
         f"<td style='text-align:left'>{'' if v is None else v}</td></tr>"
         for k, v in fields
     )
+
+    refs = r.get("references") or []
+    refs_html = ""
+    if refs:
+        refs_html = "<div style='margin-top:6px'><b>References</b><div style='margin:4px 0;padding-left:12px'>"
+        for ref in refs:
+            refs_html += f"<div style='margin-bottom:6px'>{ref}</div>"
+        refs_html += "</div></div>"
 
     # Two download buttons
     buttons_html = ""
@@ -199,13 +176,14 @@ def popup_html(r: dict) -> str:
         </a>"""
 
     return f"""
-      <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:13px; max-width:420px">
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:13px; max-width:420px">
         <table>{rows}</table>
         {'<hr style="margin:6px 0" />' if refs_html or buttons_html else ''}
-        {('<b>References</b>' + refs_html) if refs_html else ''}
+        {refs_html}
         {buttons_html}
-      </div>
+    </div>
     """
+
 
 markers_fg = folium.FeatureGroup(name="Benchmark FIM Sites", show=True)
 for r in filtered:
@@ -235,6 +213,7 @@ if st.session_state["fim_show"]:
         gj.add_to(polys_fg)
     polys_fg.add_to(m)
 
+# Legend
 legend_items = "".join(
     f"<div style='display:flex;align-items:center;margin-bottom:6px'>"
     f"<span style='display:inline-block;width:16px;height:16px;background:{TIER_COLORS.get(t, DEFAULT_TIER_COLOR)};"
@@ -255,6 +234,7 @@ folium.LayerControl(collapsed=False).add_to(m)
 
 ret = st_folium(m, width=None, height=720, key="fim_map")
 
+# persist viewport after applying filters
 if apply_filters and isinstance(ret, dict):
     c = ret.get("center"); z = ret.get("zoom")
     if isinstance(c, dict) and ("lat" in c) and ("lng" in c) and isinstance(z, (int, float)):
