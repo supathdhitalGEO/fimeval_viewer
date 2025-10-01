@@ -1,4 +1,0 @@
-streamlit>=1.36
-folium
-streamlit-folium
-boto3
