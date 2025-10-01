@@ -1,28 +1,31 @@
-
 import streamlit as st
-def inject_sidebar_nav_css(font_size_px=28, width_px=320):
+
+"""
+Utility functions for Streamlit UI customization.
+"""
+def inject_globalfont(font_size_px=16, sidebar_font_size_px=20, sidebar_width_px=340):
     st.markdown(
         f"""
         <style>
-        /* Make the sidebar wider (optional) */
-        section[data-testid="stSidebar"] {{
-            min-width: {width_px}px !important;
-            max-width: {width_px}px !important;
+        /* Global font */
+        html, body, [class*="css"] {{
+            font-family: "Arial Narrow", Arial, sans-serif !important;
+            font-size: {font_size_px}px;
         }}
 
-        /* Make sidebar nav labels bigger & bolder.
-           Cover a, and any child (p/span/div) — works across Streamlit versions. */
+        /* Sidebar nav items */
         section[data-testid="stSidebar"] [data-testid="stSidebarNav"] li a,
         section[data-testid="stSidebar"] [data-testid="stSidebarNav"] li a * ,
         section[data-testid="stSidebar"] nav li a,
         section[data-testid="stSidebar"] nav li a * {{
-            font-size: {font_size_px}px !important;
+            font-family: "Arial Narrow", Arial, sans-serif !important;
+            font-size: {sidebar_font_size_px}px !important;
             font-weight: 800 !important;
             line-height: 1.2 !important;
             color: #1f2937 !important;
         }}
 
-        /* Hover & active colors */
+        /* Sidebar hover & active */
         section[data-testid="stSidebar"] [data-testid="stSidebarNav"] li a:hover *,
         section[data-testid="stSidebar"] nav li a:hover * {{
             color: #2563eb !important;
@@ -30,6 +33,22 @@ def inject_sidebar_nav_css(font_size_px=28, width_px=320):
         section[data-testid="stSidebar"] [data-testid="stSidebarNav"] li a[aria-current="page"] *,
         section[data-testid="stSidebar"] nav li a[aria-current="page"] * {{
             color: #1d4ed8 !important;
+        }}
+
+        /* Control header sizes */
+        h1 {{
+            font-size: 28px !important;   /* title */
+        }}
+        h2 {{
+            font-size: 22px !important;   /* header */
+        }}
+        h3 {{
+            font-size: 18px !important;   /* subheader */
+        }}
+
+        /* Footer captions smaller */
+        .stCaption, footer, .st-emotion-cache-183lzff p {{
+            font-size: 14px !important;
         }}
         </style>
         """,

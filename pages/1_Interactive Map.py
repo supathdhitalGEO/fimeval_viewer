@@ -5,12 +5,13 @@ import urllib.parse
 from folium.features import GeoJson
 from branca.element import Element
 import datetime as dt
-from utilis.ui import inject_sidebar_nav_css
+import boto3, io, zipfile, tempfile, os
 
-inject_sidebar_nav_css(font_size_px=20, width_px=320)
-
+from utilis.ui import inject_globalfont
+inject_globalfont(font_size_px=18, sidebar_font_size_px=20)    
 
 from utilis.s3_catalog import build_catalog
+from utilis.s3_datadownloads import find_json_in_folder, s3_http_url
 
 st.set_page_config(page_title="Interactive FIM Vizualizer", page_icon="🌊", layout="wide")
 st.title("Benchmark FIMs")
@@ -22,6 +23,7 @@ if "saved_zoom" not in st.session_state:
 
 BUCKET = "sdmlab"
 ROOT_PREFIX = "FIM_database_test/"
+
 TIER_COLORS = {
     "Tier_1": "#1b9e77",
     "Tier_2": "#d95f02",
@@ -142,16 +144,25 @@ folium.TileLayer(tiles=bm["tiles"], name=basemap_choice, control=False, attr=bm[
 
 def popup_html(r: dict) -> str:
     tif_url = None
-    dl_url = None
-    file_name = r.get("file_name")
-    s3_key = r.get("s3_key")
+    json_url = None
+
+    file_name = r.get("file_name")        
+    s3_key = r.get("s3_key")              
+    folder = None
+
     if s3_key:
         folder = s3_key.rsplit("/", 1)[0]
-        dl_param = urllib.parse.quote(folder, safe="")
-        dl_url = f"?dl_prefix={dl_param}"
+
+        # Direct .tif URL
         if file_name:
             tif_path = f"{folder}/{file_name}"
-            tif_url = f"https://{BUCKET}.s3.amazonaws.com/{urllib.parse.quote(tif_path, safe='/')}"
+            tif_url = s3_http_url(BUCKET, tif_path)
+
+        # Direct .json URL
+        json_key = find_json_in_folder(BUCKET, folder, file_name)
+        if json_key:
+            json_url = s3_http_url(BUCKET, json_key)
+
     fields = [
         ("File Name", file_name),
         ("Resolution (m)", r.get("resolution_m")),
@@ -169,33 +180,30 @@ def popup_html(r: dict) -> str:
         f"<td style='text-align:left'>{'' if v is None else v}</td></tr>"
         for k, v in fields
     )
-    download_html = ""
-    if dl_url:
-        download_html += f"""
-        <div style="margin-top:10px">
-          <a href="{dl_url}"
-             style="text-decoration:none;display:inline-block;background:#16a34a;color:#fff;
-                    padding:8px 10px;border-radius:6px;font-weight:600;margin-right:8px;">
-            ⬇ Download Folder with FIM, metadata, AOI (.zip)
-          </a>
-        </div>
-        """
+
+    # Two download buttons
+    buttons_html = ""
     if tif_url:
-        download_html += f"""
-        <div style="margin-top:6px">
-          <a href="{tif_url}" target="_blank" rel="noopener noreferrer"
-             style="text-decoration:none;display:inline-block;background:#2563eb;color:#fff;
-                    padding:6px 10px;border-radius:6px;font-weight:600;">
-            ⬇ Download FIM Only (.tif)
-          </a>
-        </div>
-        """
+        buttons_html += f"""
+        <a href="{tif_url}" target="_blank" rel="noopener"
+           style="text-decoration:none;display:inline-block;background:#2563eb;color:#fff;
+                  padding:8px 10px;border-radius:6px;font-weight:600;margin-right:8px;">
+          ⬇ Download Benchmark FIM (.tif)
+        </a>"""
+    if json_url:
+        buttons_html += f"""
+        <a href="{json_url}" target="_blank" rel="noopener"
+           style="text-decoration:none;display:inline-block;background:#059669;color:#fff;
+                  padding:8px 10px;border-radius:6px;font-weight:600;">
+          ⬇ Download Metadata (.json)
+        </a>"""
+
     return f"""
       <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:13px; max-width:420px">
         <table>{rows}</table>
-        {'<hr style="margin:6px 0 6px 0" />' if refs_html or download_html else ''}
+        {'<hr style="margin:6px 0" />' if refs_html or buttons_html else ''}
         {('<b>References</b>' + refs_html) if refs_html else ''}
-        {download_html}
+        {buttons_html}
       </div>
     """
 
@@ -238,7 +246,7 @@ legend_html = f"""
 <div style="position:fixed; z-index:9999; bottom:20px; right:20px; background:rgba(255,255,255,0.95);
             padding:12px 14px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
   <div style="font-weight:600; font-size:14px; margin-bottom:8px">FIM Tiers</div>
-  {legend_items if legend_items else '<div style="font-size:13px;color:#666">No tiers selected</div>'}
+  {legend_items if legend_items else '<div style="font-size:13px;color:#666">No FIMs with this filter in any Tier</div>'}
 </div>
 """
 m.get_root().html.add_child(Element(legend_html))
@@ -252,3 +260,4 @@ if apply_filters and isinstance(ret, dict):
     if isinstance(c, dict) and ("lat" in c) and ("lng" in c) and isinstance(z, (int, float)):
         st.session_state["saved_center"] = [float(c["lat"]), float(c["lng"])]
         st.session_state["saved_zoom"] = float(z)
+

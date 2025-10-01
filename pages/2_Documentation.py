@@ -1,3 +1,3 @@
-from utilis.ui import inject_sidebar_nav_css
+from utilis.ui import inject_globalfont
 
-inject_sidebar_nav_css(font_size_px=20, width_px=320)
+inject_globalfont(font_size_px=18, sidebar_font_size_px=20)
