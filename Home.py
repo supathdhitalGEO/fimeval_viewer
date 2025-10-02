@@ -214,7 +214,7 @@ col_left, col_right = st.columns(2)
 with col_left:
     l1, l2 = st.columns([0.18, 0.82], vertical_alignment="center")
     with l1:
-        st.image("images/SDML_logo.png", width=70)
+        st.image("images/SDML_logo.png", width=80)
     with l2:
         st.markdown(
             """
@@ -229,16 +229,14 @@ with col_left:
 with col_right:
     r1, r2 = st.columns([0.18, 0.82], vertical_alignment="center")
     with r1:
-        st.image("images/ciroh_logo.png", width=70)
+        st.image("images/ciroh_logo.png", width=80)
     with r2:
         st.markdown(
             """
             <div class="footer-container">
-              <i>
               Funding for this project was provided by the National Oceanic & Atmospheric Administration (NOAA),
               awarded to the Cooperative Institute for Research to Operations in Hydrology (CIROH) through the NOAA
               Cooperative Agreement with The University of Alabama.
-              </i>
             </div>
             """,
             unsafe_allow_html=True,

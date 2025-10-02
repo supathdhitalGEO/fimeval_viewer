@@ -23,7 +23,7 @@ if "saved_zoom" not in st.session_state:
     st.session_state["saved_zoom"] = 5
 
 BUCKET = "sdmlab"
-ROOT_PREFIX = "FIM_database_test/"
+ROOT_PREFIX = "FIM_Database/"
 
 TIER_COLORS = {
     "Tier_1": "#1b9e77",
@@ -77,14 +77,24 @@ with st.sidebar:
         st.success("Cache cleared. Data will reload now.")
 
 # Cached loads and helpers
-
-# build_catalog itself is already cached inside utilis/s3_catalog.py
 with st.spinner("Loading catalog from S3 (cached)…"):
-    records = build_catalog(BUCKET, ROOT_PREFIX)
+    result = build_catalog(BUCKET, ROOT_PREFIX)
+
+records = result.get("records", [])
+load_errors = result.get("errors", [])
+
+if load_errors:
+    with st.expander(f"{len(load_errors)} metadata file(s) failed to parse — click for details", expanded=True):
+        for key, msg in load_errors[:50]:
+            st.markdown(f"- **s3://{BUCKET}/{key}**")
+            st.code(msg, language="text")
+        if len(load_errors) > 50:
+            st.caption(f"...and {len(load_errors)-50} more")
 
 if not records:
-    st.warning("No FIM metadata found in S3. Check bucket/prefix or permissions.")
+    st.warning("No FIM metadata found in S3 (or all JSONs failed to parse). Check bucket/prefix or permissions.")
     st.stop()
+
 
 # Filters
 all_tiers = sorted({r["tier"] for r in records})

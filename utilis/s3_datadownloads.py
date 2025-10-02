@@ -32,7 +32,7 @@ def find_json_in_folder(bucket: str, folder: str, tif_filename: str | None) -> s
       2) Try to list via anonymous (UNSIGNED) boto3 if the bucket allows public ListBucket.
       3) If listing isn't allowed, probe common names via HTTP HEAD.
 
-    Returns the JSON key (e.g., "FIM_database_test/.../foo.json") or None.
+    Returns the JSON key (e.g., "FIM_Database/.../foo.json") or None.
     """
     folder = (folder or "").rstrip("/")
 
