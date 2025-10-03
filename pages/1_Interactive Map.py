@@ -175,7 +175,7 @@ rp_all   = sorted({r.get("return_period") for r in records if r.get("tier") == "
 with st.sidebar:
     st.header("Filters")
     with st.form("filters_form", clear_on_submit=False):
-        sel_tiers = st.multiselect("Select Tiers", options=all_tiers, default=all_tiers)
+        sel_tiers = st.multiselect("Select FIM Tiers from Database", options=all_tiers, default=all_tiers)
 
         show_date_filter = any(t != "Tier_4" for t in sel_tiers)
         if show_date_filter:
@@ -188,7 +188,7 @@ with st.sidebar:
 
         show_rp_filter = ("Tier_4" in sel_tiers) and bool(rp_all)
         if show_rp_filter:
-            sel_rps = st.multiselect("Return periods (Tier_4, years)", options=rp_all, default=rp_all)
+            sel_rps = st.multiselect("Return periods (For synthetic benchark Tier_4, years)", options=rp_all, default=rp_all)
         else:
             sel_rps = None
 
